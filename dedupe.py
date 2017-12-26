@@ -1,45 +1,27 @@
 #!/usr/bin/python
 
 from __future__ import division
-import os, errno, operator, re, sys, subprocess, signal, redis
-import random
+import os, errno, re, redis
 import numpy as np
 import enchant
-from nltk import bigrams,ConditionalFreqDist,FreqDist,pos_tag,pos_tag_sents
-from gensim import parsing, matutils, interfaces, corpora, models, similarities, summarization
-from gensim.utils import lemmatize
-from nltk import collocations, association, text, tree
-from gensim.corpora.mmcorpus import MmCorpus
-from gensim.matutils import corpus2csc
+from gensim import corpora, models
 from gensim.similarities.docsim import SparseMatrixSimilarity
 from reader import Json100CorpusReader
-import itertools, shutil, requests
+import itertools, shutil
 from collections import Counter
-from bisect import bisect_left
 from tempfile import mkstemp
 
-import re
-from lxml import etree
-from os import listdir
 import json
-import cPickle
-from collections import defaultdict
 from math import radians, sin, cos, sqrt, asin
-from nltk.corpus.util import LazyCorpusLoader
 
-from os import listdir
-from os.path import getmtime, join, realpath
+from os.path import join
 import dateutil.parser
 from pytz import utc
-from datetime import datetime
-from dateutil.tz import tzlocal
 from time import time
 import argparse
 
 from sklearn.externals import joblib
-from sklearn.feature_extraction.text import CountVectorizer, TfidfTransformer
-from sklearn.pipeline import Pipeline
-from sklearn.model_selection import GridSearchCV
+
 
 def reflexive(x):
     # for CountVectorizer 'analyzer' which cannot accept a lambda due to pickle caching
@@ -63,7 +45,8 @@ def datetime_parser(json_dict):
     return json_dict
 
 def determine_payfor_fencepost(dt1, thresh):
-    Markers = sorted([f for f in os.listdir(args.odir) if re.search(r'Marker\..*\.json$', f)], reverse=True)
+    Markers = sorted([f for f in os.listdir(args.odir) 
+                      if re.search(r'Marker\..*\.json$', f)], reverse=True)
     jsons = []
     for m in Markers:
         within = False
@@ -87,14 +70,13 @@ def CorpusDedupe(cr):
     try:
         unduped = joblib.load(join(args.odir, 'unduped.pkl'), mmap_mode='r')
         duped = joblib.load(join(args.odir, 'duped.pkl'), mmap_mode='r')
-    except IOError as e:
+    except IOError:
         unduped = set()
         duped = set()
 
     dictionary = corpora.Dictionary()
     corpus = [dictionary.doc2bow(doc, allow_update=True) for doc in list(cr)]
-    tfidf = models.TfidfModel(corpus)
-    
+    tfidf = models.TfidfModel(corpus)   
     tempf  = mkstemp()[1]
     corpora.MmCorpus.serialize(tempf, tfidf[corpus], id2word=dictionary.id2token)
     mmcorpus = corpora.MmCorpus(tempf)
@@ -119,7 +101,7 @@ def CorpusDedupe(cr):
     return unduped, duped
 
 def haversine(lat1, lon1, lat2, lon2):
-    R = 6372.8 # Earth radius in kilometers
+    R = 6372.8  # Earth radius in kilometers
     dLat = radians(lat2 - lat1)
     dLon = radians(lon2 - lon1)
     lat1 = radians(lat1)
@@ -127,26 +109,25 @@ def haversine(lat1, lon1, lat2, lon2):
 
     a = sin(dLat/2)**2 + cos(lat1)*cos(lat2)*sin(dLon/2)**2
     c = 2*asin(sqrt(a))
- 
     return R * c
 
 def within(coords):
     if coords[0] is None or coords[1] is None:
-	return False
+        return False
     if spider == "dmoz":
-	return coords[0] < 40.796126
+        return coords[0] < 40.796126
     # que
     elif spider == "que":
-	km = haversine(40.743924, -73.912388, float(coords[0]), float(coords[1]))
-	return km < 4
+        km = haversine(40.743924, -73.912388, float(coords[0]), float(coords[1]))
+        return km < 4
     # sf
     elif spider == "sfc":
-	km = haversine(37.779076, -122.397501, coords[0], coords[1])
-	return kms < 1.5
+        km = haversine(37.779076, -122.397501, coords[0], coords[1])
+        return kms < 1.5
     # berkeley
     elif spider == "eby":
-	km = haversine(37.871454, -122.298115, coords[0], coords[1])
-	return km < 3
+        km = haversine(37.871454, -122.298115, coords[0], coords[1])
+        return km < 3
     # milbrae
     #    km = haversine(37.600122, -122.386914, coords[0], coords[1])
     # daly city
@@ -204,9 +185,9 @@ tla = ['abo', 'sub', 'apa', 'cto']
 spider = os.path.basename(os.path.realpath(args.odir))
 wdir = os.path.dirname(os.path.realpath(__file__))
 
-dt_marker1 = dateutil.parser.parse(os.path.basename(os.path.realpath(join(args.odir, 'marker1')).split(".")[1][::-1].replace("-", ":", 2)[::-1]).replace(tzinfo=utc)
+dt_marker1 = dateutil.parser.parse(os.path.basename(os.path.realpath(join(args.odir, 'marker1'))).split(".")[1][::-1].replace("-", ":", 2)[::-1]).replace(tzinfo=utc)
 payfor = 9
-jsons = determine_payfor_fencepost(dt_marker1, payfor)
+ijsons = determine_payfor_fencepost(dt_marker1, payfor)
 craigcr = Json100CorpusReader(args.odir, sorted(jsons), dedupe="id")
 coords = list(craigcr.coords())
 links = list(craigcr.field('link'))
@@ -312,8 +293,8 @@ with open(join(args.odir, 'digest'), 'w+') as good, open(join(args.odir, 'reject
         ng=numGraphs(z[0])
         wps=float(nw/ns) if ns else 0.0
         nr=numRecurs(z[0])
-        np=nPara(z[1])
-        spp=float(len(z[0])/np) if np else 0.0
+        nump=nPara(z[1])
+        spp=float(len(z[0])/nump) if nump else 0.0
         ny = numYell(z[0])
         yr=float(ny/nw) if nw else 0.0
         nna=numNonAscii(z[0])
@@ -334,7 +315,7 @@ for i in sorted(filtered):
     if prices[i]['price'] is not None:
         red.hset('item.' + ids[i], 'price', prices[i]['price'])
         red.zadd('item.index.price', prices[i]['price'], ids[i])
-    red.hmset('item.' + ids[i], {'link': links[i], 'title': titles[i], 'bedrooms': bedrooms[i], 'coords': coords[i], 'posted': posted[i].isoformat() })
+    red.hmset('item.' + ids[i], {'link': links[i], 'title': titles[i], 'bedrooms': bedrooms[i], 'coords': coords[i], 'posted': posted[i].isoformat()})
     red.zadd('item.index.bedrooms', bedrooms[i], ids[i])
     if None not in coords[i]:
         red.geoadd('item.geohash.coords', *(tuple(reversed(coords[i])) + (ids[i],)))
