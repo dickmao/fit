@@ -187,7 +187,7 @@ wdir = os.path.dirname(os.path.realpath(__file__))
 
 dt_marker1 = dateutil.parser.parse(os.path.basename(os.path.realpath(join(args.odir, 'marker1'))).split(".")[1][::-1].replace("-", ":", 2)[::-1]).replace(tzinfo=utc)
 payfor = 9
-ijsons = determine_payfor_fencepost(dt_marker1, payfor)
+jsons = determine_payfor_fencepost(dt_marker1, payfor)
 craigcr = Json100CorpusReader(args.odir, sorted(jsons), dedupe="id")
 coords = list(craigcr.coords())
 links = list(craigcr.field('link'))
