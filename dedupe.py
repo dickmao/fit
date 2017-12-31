@@ -196,7 +196,7 @@ ids = list(craigcr.field('id'))
 posted = [dateutil.parser.parse(t) for t in craigcr.field('posted')]
 bedrooms = []
 
-grid_svm = joblib.load(join(wdir, 'best.pkl'), mmap_mode='r')
+svc = joblib.load(join(wdir, 'fit.pkl'), mmap_mode='r')
 unduped, duped = CorpusDedupe(craigcr)
 for i, z in enumerate(zip(craigcr.attrs_matching(r'[0-9][bB][rR]'), titles, craigcr.raw())):
     if z[0] is not None:

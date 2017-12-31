@@ -238,6 +238,13 @@ class Json100CorpusReader(CorpusReader):
                        for (path, enc, fileid) \
                        in self.abspaths(None, True, True)])
 
+    def desc(self):
+        return concat([self.CorpusView(path, self._unique[fileid], \
+                                       lambda stream: [read_desc(stream)], \
+                                       encoding=enc) \
+                       for (path, enc, fileid) \
+                       in self.abspaths(None, True, True)])
+
     def field(self, x):
         return concat([self.CorpusView(path, self._unique[fileid], \
                                        lambda stream: [read_x(stream, x)], \
