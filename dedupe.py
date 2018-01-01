@@ -3,7 +3,7 @@
 from __future__ import division
 import os, errno, re, redis
 import numpy as np
-from corenlp import CoreNLPClient, WordTokenizer, SentTokenizer
+from corenlp import CoreNLPClient
 import enchant, boto3
 from gensim import corpora, models
 from gensim.similarities.docsim import SparseMatrixSimilarity
@@ -23,6 +23,7 @@ import argparse
 
 from sklearn.externals import joblib
 
+vernum = 'ad0001'
 
 def argparse_dirtype(astring):
     if not os.path.isdir(astring):
@@ -171,7 +172,9 @@ def numNonAscii(vOfv):
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--redis-host', default='localhost')
+parser.add_argument('--corenlp-uri', type=str, default='http://localhost:9005')
 parser.add_argument("odir", type=argparse_dirtype, help="required json directory")
+
 args = parser.parse_args()
 args.odir = args.odir.rstrip("/")
 tla = ['abo', 'sub', 'apa', 'cto']
@@ -248,10 +251,15 @@ except OSError as e:
     if e.errno != errno.EEXIST:
         raise
 
-svc = joblib.load(join(wdir, 'ad0001.pkl'), mmap_mode='r')
+s3 = boto3.resource('s3')
+bucket = s3.Bucket("303634175659.newyork")
+with open('/var/tmp/svc.pkl', 'wb') as pkl:
+    bucket.download_fileobj(vernum + '.pkl', pkl)
+svc = joblib.load('/var/tmp/svc.pkl', mmap_mode='r')
 
-with
-scores = svc.decision_function(list(itertools.chain(craigcr.field('desc'))))
+with CoreNLPClient(start_cmd="gradle -p {} server".format("../CoreNLP"), endpoint=args.corenlp_uri, timeout=15000) as client:
+    scores = svc.decision_function(list(craigcr.field('desc')))
+
 filtered = []
 with open(join(args.odir, 'digest'), 'w+') as good, open(join(args.odir, 'reject'), 'w+') as bad:
     for i,z in enumerate(zip(craigcr.docs(), craigcr.raw(newlines_are_periods=True))):
