@@ -3,7 +3,8 @@
 from __future__ import division
 import os, errno, re, redis
 import numpy as np
-import enchant
+from corenlp import CoreNLPClient, WordTokenizer, SentTokenizer
+import enchant, boto3
 from gensim import corpora, models
 from gensim.similarities.docsim import SparseMatrixSimilarity
 from reader import Json100CorpusReader
@@ -22,14 +23,6 @@ import argparse
 
 from sklearn.externals import joblib
 
-
-def reflexive(x):
-    # for CountVectorizer 'analyzer' which cannot accept a lambda due to pickle caching
-    return x
-
-def get_text_length(x):
-    import numpy
-    return numpy.array([len(t) for t in x]).reshape(-1, 1)
 
 def argparse_dirtype(astring):
     if not os.path.isdir(astring):
@@ -188,6 +181,7 @@ wdir = os.path.dirname(os.path.realpath(__file__))
 dt_marker1 = dateutil.parser.parse(os.path.basename(os.path.realpath(join(args.odir, 'marker1'))).split(".")[1][::-1].replace("-", ":", 2)[::-1]).replace(tzinfo=utc)
 payfor = 9
 jsons = determine_payfor_fencepost(dt_marker1, payfor)
+
 craigcr = Json100CorpusReader(args.odir, sorted(jsons), dedupe="id")
 coords = list(craigcr.coords())
 links = list(craigcr.field('link'))
@@ -196,7 +190,6 @@ ids = list(craigcr.field('id'))
 posted = [dateutil.parser.parse(t) for t in craigcr.field('posted')]
 bedrooms = []
 
-svc = joblib.load(join(wdir, 'fit.pkl'), mmap_mode='r')
 unduped, duped = CorpusDedupe(craigcr)
 for i, z in enumerate(zip(craigcr.attrs_matching(r'[0-9][bB][rR]'), titles, craigcr.raw())):
     if z[0] is not None:
@@ -255,7 +248,10 @@ except OSError as e:
     if e.errno != errno.EEXIST:
         raise
 
-scores = grid_svm.decision_function(list(itertools.chain(craigcr)))
+svc = joblib.load(join(wdir, 'ad0001.pkl'), mmap_mode='r')
+
+with
+scores = svc.decision_function(list(itertools.chain(craigcr.field('desc'))))
 filtered = []
 with open(join(args.odir, 'digest'), 'w+') as good, open(join(args.odir, 'reject'), 'w+') as bad:
     for i,z in enumerate(zip(craigcr.docs(), craigcr.raw(newlines_are_periods=True))):
