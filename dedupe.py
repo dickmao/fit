@@ -4,20 +4,20 @@ from __future__ import division
 import os, errno, re, redis
 import numpy as np
 from corenlp import CoreNLPClient
-import enchant, boto3
+import enchant
 from gensim import corpora, models
 from gensim.similarities.docsim import SparseMatrixSimilarity
 from reader import Json100CorpusReader
-import itertools, shutil
+import shutil
 from collections import Counter
 from tempfile import mkstemp
+import botocore.session
+from get_data import download_s3
 
-import json
 from math import radians, sin, cos, sqrt, asin
 
 from os.path import join
 import dateutil.parser
-from pytz import utc
 from time import time
 import argparse
 
@@ -29,32 +29,6 @@ def argparse_dirtype(astring):
     if not os.path.isdir(astring):
         raise argparse.ArgumentError
     return astring
-
-def datetime_parser(json_dict):
-    for k,v in json_dict.iteritems():
-        try:
-            json_dict[k] = dateutil.parser.parse(v)
-        except (ValueError, AttributeError):
-            pass
-    return json_dict
-
-def determine_payfor_fencepost(dt1, thresh):
-    Markers = sorted([f for f in os.listdir(args.odir) 
-                      if re.search(r'Marker\..*\.json$', f)], reverse=True)
-    jsons = []
-    for m in Markers:
-        within = False
-        with open(join(args.odir, m), 'r') as fp:
-            url2dt = json.load(fp, object_hook=datetime_parser)
-            for url,dt0 in url2dt.iteritems():
-                if (dt1 - dt0).days < thresh:
-                    within = True
-                    break
-        if within:
-            jsons.append("{}.{}.json".format(spider, m.split('.')[1]))
-        else:
-            break
-    return jsons
 
 def CorpusDedupe(cr):
     # dict.doc2bow makes:
@@ -117,7 +91,7 @@ def within(coords):
     # sf
     elif spider == "sfc":
         km = haversine(37.779076, -122.397501, coords[0], coords[1])
-        return kms < 1.5
+        return km < 1.5
     # berkeley
     elif spider == "eby":
         km = haversine(37.871454, -122.298115, coords[0], coords[1])
@@ -132,8 +106,8 @@ def within(coords):
 def qPronouns(vOfv):
     pronouns = re.compile("^(i|me|mine|our|he|she|they|their|we|my|his|her|myself|himself|herself|themselves)$", re.IGNORECASE)
     for w in [w for sent in vOfv for w in sent]:
-	if pronouns.search(w):
-	    return True
+        if pronouns.search(w):
+            return True
     return False
 
 
@@ -179,13 +153,13 @@ args = parser.parse_args()
 args.odir = args.odir.rstrip("/")
 tla = ['abo', 'sub', 'apa', 'cto']
 spider = os.path.basename(os.path.realpath(args.odir))
-wdir = os.path.dirname(os.path.realpath(__file__))
+srcdir = os.path.dirname(os.path.realpath(__file__))
 
-dt_marker1 = dateutil.parser.parse(os.path.basename(os.path.realpath(join(args.odir, 'marker1'))).split(".")[1][::-1].replace("-", ":", 2)[::-1]).replace(tzinfo=utc)
+bucket = "303634175659.newyork"
+s3_client = botocore.session.get_session().create_client('s3')
 payfor = 9
-jsons = determine_payfor_fencepost(dt_marker1, payfor)
-
-craigcr = Json100CorpusReader(args.odir, sorted(jsons), dedupe="id")
+jsons, latest = download_s3(s3_client, bucket, args.odir, payfor)
+craigcr = Json100CorpusReader(args.odir, jsons, dedupe="id")
 coords = list(craigcr.coords())
 links = list(craigcr.field('link'))
 titles = list(craigcr.field('title'))
@@ -214,7 +188,7 @@ for i, z in enumerate(zip(craigcr.attrs_matching(r'[0-9][bB][rR]'), titles, crai
             bedrooms.append(0)
 
 firstnames = set()
-with open(join(wdir, 'firstnames'), 'r') as f:
+with open(join(srcdir, 'firstnames'), 'r') as f:
     for name in f.readlines():
         name = re.sub('\n', '', name)
         firstnames.add(name)
@@ -234,8 +208,8 @@ for lister in [re.split(r':\s*', i, 1).pop() if i else None for i in craigcr.att
 oklistedby = set()
 for pair in Counter(listedby).iteritems():
     if pair[1] == 1:
-	if not re.search(re_suspect, pair[0], re.IGNORECASE):
-	    oklistedby.add(pair[0])
+        if not re.search(re_suspect, pair[0], re.IGNORECASE):
+            oklistedby.add(pair[0])
 
 odoms = craigcr.attrs_matching(r'[oO]dom')
 odoms = [re.split(r':\s*', i, 1).pop() if i else None for i in odoms]
@@ -251,14 +225,15 @@ except OSError as e:
     if e.errno != errno.EEXIST:
         raise
 
-s3 = boto3.resource('s3')
-bucket = s3.Bucket("303634175659.newyork")
-with open('/var/tmp/svc.pkl', 'wb') as pkl:
-    bucket.download_fileobj(vernum + '.pkl', pkl)
-svc = joblib.load('/var/tmp/svc.pkl', mmap_mode='r')
-
 with CoreNLPClient(start_cmd="gradle -p {} server".format("../CoreNLP"), endpoint=args.corenlp_uri, timeout=15000) as client:
-    scores = svc.decision_function(list(craigcr.field('desc')))
+    response = s3_client.get_object(Bucket=bucket, Key="{}.pkl".format(vernum))
+    with open(join(args.odir, 'svc.pkl'), 'w') as fp:
+        fp.write(response['Body'].read())
+    svc = joblib.load(join(args.odir, 'svc.pkl'), mmap_mode='r')
+    pipeline = next(x[1] for x in svc.named_steps['featureunion'].transformer_list \
+                    if x[0] == 'text')
+    pipeline.named_steps['vectorizer'].analyzer._client = client
+    scores = svc.decision_function(list(craigcr.desc()))
 
 filtered = []
 with open(join(args.odir, 'digest'), 'w+') as good, open(join(args.odir, 'reject'), 'w+') as bad:
@@ -272,7 +247,7 @@ with open(join(args.odir, 'digest'), 'w+') as good, open(join(args.odir, 'reject
         if ids[i] in duped:
             bad.write(("dupe %s" % listing).encode('utf-8') + '\n\n')
             continue
-        if (dt_marker1 - posted[i]).days >= payfor:
+        if (latest - posted[i]).days >= payfor:
             bad.write(("payfor %s" % listing).encode('utf-8') + '\n\n')
             continue
         if listedby[i] is not None and listedby[i] not in oklistedby:
@@ -325,3 +300,4 @@ for i in sorted(filtered):
         red.geoadd('item.geohash.coords', *(tuple(reversed(coords[i])) + (ids[i],)))
     red.hset('item.' + ids[i], 'score', scores[i])
     red.zadd('item.index.score', scores[i], ids[i])
+
