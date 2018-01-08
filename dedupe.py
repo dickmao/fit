@@ -155,7 +155,7 @@ tla = ['abo', 'sub', 'apa', 'cto']
 spider = os.path.basename(os.path.realpath(args.odir))
 srcdir = os.path.dirname(os.path.realpath(__file__))
 
-bucket = "303634175659.newyork"
+bucket = "303634175659.$spider"
 s3_client = botocore.session.get_session().create_client('s3')
 payfor = 9
 jsons, latest = download_s3(s3_client, bucket, args.odir, payfor)
