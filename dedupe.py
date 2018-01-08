@@ -145,7 +145,7 @@ def numNonAscii(vOfv):
     return sum([1 for v in vOfv for w in v if any(ord(char) > 127 and ord(char) != 8226 for char in w)])
 
 parser = argparse.ArgumentParser()
-parser.add_argument('--redis-host', default='localhost')
+parser.add_argument('--redis-host', type=str, default='localhost')
 parser.add_argument('--corenlp-uri', type=str, default='http://localhost:9005')
 parser.add_argument("odir", type=argparse_dirtype, help="required json directory")
 
@@ -230,9 +230,17 @@ with CoreNLPClient(start_cmd="gradle -p {} server".format("../CoreNLP"), endpoin
     with open(join(args.odir, 'svc.pkl'), 'w') as fp:
         fp.write(response['Body'].read())
     svc = joblib.load(join(args.odir, 'svc.pkl'), mmap_mode='r')
+    # tried to do a hasattr thing ...
+    # for tup in svc.named_steps['featureunion'].transformer_list:
+    #     pipeline = tup[1]
+    #     for obj in pipeline.named_steps.values():
+    #         if type(obj) == 
     pipeline = next(x[1] for x in svc.named_steps['featureunion'].transformer_list \
                     if x[0] == 'text')
     pipeline.named_steps['vectorizer'].analyzer._client = client
+    pipeline = next(x[1] for x in svc.named_steps['featureunion'].transformer_list \
+                    if x[0] == 'pronouns')
+    pipeline.named_steps['count'].func._client = client
     scores = svc.decision_function(list(craigcr.desc()))
 
 filtered = []
