@@ -77,12 +77,6 @@ def read_X(stream, X):
         result[f] = jso[f]
     return result
 
-def read_price(stream):
-    sprice = read_x(stream, 'price')
-    if sprice is not None:
-        return int(re.findall(r'(\d+)', sprice)[-1])
-    return None
-    
 def read_numbers(stream, X):
     line = stream.readline()
     if not line:
@@ -91,7 +85,7 @@ def read_numbers(stream, X):
     result = dict()
     for f in X:
         if f in jso and jso[f] is not None:
-            result[f] = int(re.findall(r'(\d+(?:\.\d*)?)', jso[f])[0])
+            result[f] = float(''.join(re.findall(r'(\d+(?:\.\d*)?)', jso[f])))
         else:
             result[f] = None
     return result
@@ -220,13 +214,6 @@ class Json100CorpusReader(CorpusReader):
     def datetimes(self, vOfw):
         return concat([self.CorpusView(path, self._unique[fileid], \
                                        lambda stream: [read_datetimes(stream, vOfw)], \
-                                       encoding=enc) \
-                       for (path, enc, fileid) \
-                       in self.abspaths(None, True, True)])
-
-    def price(self):
-        return concat([self.CorpusView(path, self._unique[fileid], \
-                                       lambda stream: [read_price(stream)], \
                                        encoding=enc) \
                        for (path, enc, fileid) \
                        in self.abspaths(None, True, True)])

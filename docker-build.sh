@@ -1,10 +1,10 @@
 #!/bin/bash -ex
 
 cd $(dirname $0)
-if [ -d ".dedupe" ]; then
-  (cd .dedupe ; git pull )  
+if [ -d ".deployer" ]; then
+  (cd .deployer ; git pull )  
 else
-  git clone --depth=1 --single-branch git@github.com:dickmao/fit.git .dedupe
+  git clone --depth=1 --single-branch git@github.com:dickmao/deployer.git .deployer
 fi
 
 if [ ! -z $(docker ps -aq --filter "name=dedupe") ]; then
@@ -12,9 +12,9 @@ if [ ! -z $(docker ps -aq --filter "name=dedupe") ]; then
 fi
 
 COPY=""
-for file in $( cd .dedupe ; git ls-files ) ; do
+for file in $(git ls-files) ; do
   dir=$(dirname $file)
-  COPY=$(printf "$COPY\nCOPY .dedupe/${file} /${dir}/")
+  COPY=$(printf "$COPY\nCOPY ${file} /${dir}/")
 done
 
 cat > ./Dockerfile.tmp <<EOF
@@ -32,6 +32,6 @@ RUN set -xe \
 $COPY
 EOF
 
-../ecr-build-and-push.sh ./Dockerfile.tmp dedupe:latest
+.deployer/ecr-build-and-push.sh ./Dockerfile.tmp dedupe:latest
 
 rm ./Dockerfile.tmp
