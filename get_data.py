@@ -1,6 +1,7 @@
 import os, json, dateutil.parser
 from os.path import join
 from pytz import utc
+import pickle
 
 def datetime_parser(json_dict):
     for k,v in json_dict.iteritems():
@@ -26,15 +27,22 @@ def download_s3(s3_client, bucket, dir=".", payfor=9):
                 fp.write(response['Body'].read())
 
         with open(join(dir, m), 'r') as fp:
-            url2dt = json.load(fp, object_hook=datetime_parser)
-            for url,dt0 in url2dt.iteritems():
-                if (latest - dt0).days < payfor:
+            try:
+                url2dt = json.load(fp, object_hook=datetime_parser)
+                for url,dt0 in url2dt.iteritems():
+                    if (latest - dt0).days < payfor:
+                        within = True
+                        break
+            except ValueError:
+                fp.seek(0)
+                dates = pickle.load(fp)
+                if any((latest.date() - dt).days < payfor for dt in dates):
                     within = True
-                    break
+                
         if within:
             body = "Data.{}".format(m.split(".", 1)[1])
-            jsons.append(join(".", body))
-            if not os.path.exists(join(".", body)):
+            jsons.append(body) # reader.py readds the parent dir
+            if not os.path.exists(join(dir, body)):
                 response = s3_client.get_object(Bucket=bucket, Key=body)
                 with open(join(dir, body), 'w') as fp:
                     fp.write(response['Body'].read())

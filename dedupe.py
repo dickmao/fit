@@ -1,14 +1,13 @@
 #!/usr/bin/python
 
 from __future__ import division
-import os, errno, re, redis
+import os, re, redis
 import numpy as np
 from corenlp import CoreNLPClient
 import enchant
 from gensim import corpora, models
 from gensim.similarities.docsim import SparseMatrixSimilarity
 from reader import Json100CorpusReader
-import shutil
 from collections import Counter
 from tempfile import mkstemp
 import botocore.session
@@ -30,7 +29,29 @@ def argparse_dirtype(astring):
         raise argparse.ArgumentError
     return astring
 
-def CorpusDedupe(cr):
+def revisionist(cr, ids):
+    dictionary = corpora.Dictionary()
+    corpus = [dictionary.doc2bow(doc, allow_update=True) for doc in list(cr)]
+    tfidf = models.TfidfModel(corpus)   
+    tempf  = mkstemp()[1]
+    corpora.MmCorpus.serialize(tempf, tfidf[corpus], id2word=dictionary.id2token)
+    mmcorpus = corpora.MmCorpus(tempf)
+    # SparseMatrixSimilarity[query]
+    sim = SparseMatrixSimilarity(mmcorpus)[mmcorpus[range(len(ids))]]
+
+    t0 = time()
+    # ConcatenatedCorpusView cannot seem to random access; must iterate sequentially lest
+    # block reader get ahead of itself
+    assert(len(mmcorpus) == len(ids))
+    latest = set()
+    for i,z in enumerate(ids):
+        # where-clause literals are n-wide boolean arrays
+        clique = np.where(sim[i] > 0.61)[0]
+        latest.add(ids[min(clique)])
+    print("n*(n-1)/2 took %0.3fs" % (time() - t0))
+    return latest
+
+def CorpusDedupe(cr, ids):
     # dict.doc2bow makes:
     #   corpus = [[(0, 1.0), (1, 1.0), (2, 1.0)],
     #             [(2, 1.0), (3, 1.0), (4, 1.0), (5, 1.0), (6, 1.0), (8, 1.0)],
@@ -52,6 +73,7 @@ def CorpusDedupe(cr):
     duped = duped.intersection(ids)
     new_ids = set(ids) - unduped.union(duped)
     new_indices = [ids.index(i) for i in new_ids]
+    # SparseMatrixSimilarity[query]
     new_sim = SparseMatrixSimilarity(mmcorpus)[mmcorpus[new_indices]]
 
     t0 = time()
@@ -59,6 +81,7 @@ def CorpusDedupe(cr):
     # block reader get ahead of itself
     assert(len(mmcorpus) == len(ids))
     for i,z in enumerate(zip(new_ids, new_indices)):
+        # where-clause literals are n-wide boolean arrays
         for dj in np.where((new_sim[i] > 0.61) & [j!=z[1] for j in range(len(ids))])[0]:
             duped.update([z[0], ids[dj]])
     print("(n-1) + ... (n-k) = k(n - (k+1)/2) took %0.3fs" % (time() - t0))
@@ -147,19 +170,24 @@ def numNonAscii(vOfv):
 parser = argparse.ArgumentParser()
 parser.add_argument('--redis-host', type=str, default='localhost')
 parser.add_argument('--corenlp-uri', type=str, default='http://localhost:9005')
+parser.add_argument('--payfor', type=int, default=9)
+parser.add_argument('--revisionist', dest='revisionist', action='store_true')
+parser.set_defaults(revisionist=False)
 parser.add_argument("odir", type=argparse_dirtype, help="required json directory")
 
 args = parser.parse_args()
 args.odir = args.odir.rstrip("/")
-tla = ['abo', 'sub', 'apa', 'cto']
 spider = os.path.basename(os.path.realpath(args.odir))
 srcdir = os.path.dirname(os.path.realpath(__file__))
-
 bucket = "303634175659.{}".format(spider)
 s3_client = botocore.session.get_session().create_client('s3')
-payfor = 9
-jsons, latest = download_s3(s3_client, bucket, args.odir, payfor)
-craigcr = Json100CorpusReader(args.odir, jsons, dedupe="id")
+jsons, latest = download_s3(s3_client, bucket, args.odir, args.payfor)
+exclude = set()
+if args.revisionist:
+    allcr = Json100CorpusReader(args.odir, jsons, dedupe="id")
+    ids = list(allcr.field('id'))
+    exclude = set(ids) - revisionist(allcr, ids)
+craigcr = Json100CorpusReader(args.odir, jsons, dedupe="id", exclude=exclude)
 coords = list(craigcr.coords())
 links = list(craigcr.field('link'))
 titles = list(craigcr.field('title'))
@@ -167,7 +195,7 @@ ids = list(craigcr.field('id'))
 posted = [dateutil.parser.parse(t) for t in craigcr.field('posted')]
 bedrooms = []
 
-unduped, duped = CorpusDedupe(craigcr)
+unduped, duped = CorpusDedupe(craigcr, ids)
 for i, z in enumerate(zip(craigcr.attrs_matching(r'[0-9][bB][rR]'), titles, craigcr.raw())):
     if z[0] is not None:
         bedrooms.append(int(re.findall(r"[0-9]", z[0])[0]))
@@ -214,17 +242,6 @@ for pair in Counter(listedby).iteritems():
 odoms = craigcr.attrs_matching(r'[oO]dom')
 odoms = [re.split(r':\s*', i, 1).pop() if i else None for i in odoms]
 
-try:
-    shutil.rmtree(join(args.odir, 'files'))
-except OSError as e:
-    if e.errno != errno.ENOENT:
-        raise
-try:
-    os.makedirs(join(args.odir, 'files'))
-except OSError as e:
-    if e.errno != errno.EEXIST:
-        raise
-
 with CoreNLPClient(start_cmd="gradle -p {} server".format("../CoreNLP"), endpoint=args.corenlp_uri, timeout=15000) as client:
     response = s3_client.get_object(Bucket=bucket, Key="{}.pkl".format(vernum))
     with open(join(args.odir, 'svc.pkl'), 'w') as fp:
@@ -255,7 +272,7 @@ with open(join(args.odir, 'digest'), 'w+') as good, open(join(args.odir, 'reject
         if ids[i] in duped:
             bad.write(("dupe %s" % listing).encode('utf-8') + '\n\n')
             continue
-        if (latest - posted[i]).days >= payfor:
+        if (latest - posted[i]).days >= args.payfor:
             bad.write(("payfor %s" % listing).encode('utf-8') + '\n\n')
             continue
         if listedby[i] is not None and listedby[i] not in oklistedby:
@@ -267,13 +284,13 @@ with open(join(args.odir, 'digest'), 'w+') as good, open(join(args.odir, 'reject
         if not within(coords[i]):
             bad.write(("toofar %s" % listing).encode('utf-8') + '\n\n')
             continue
-        if not listedby[i] and not qPronouns(z[0]):
-            bad.write(("pronouns %s" % listing).encode('utf-8') + '\n\n')
-            continue
+        # if not listedby[i] and not qPronouns(z[0]):
+        #     bad.write(("pronouns %s" % listing).encode('utf-8') + '\n\n')
+        #     continue
 
-#        if re.search(r'leasebreak', z[1]):
-#            bad.write(("leasebreak %s" % listing).encode('utf-8') + '\n\n')
-#            continue
+        #        if re.search(r'leasebreak', z[1]):
+        #            bad.write(("leasebreak %s" % listing).encode('utf-8') + '\n\n')
+        #            continue
 
         nw=numWords(z[0])
         ns=numSents(z[0])
@@ -292,17 +309,15 @@ with open(join(args.odir, 'digest'), 'w+') as good, open(join(args.odir, 'reject
         good.write(listing.encode('utf-8') + '\n\n')
         filtered.append(i)
 
-        tla_link = re.findall(r"({0})/(?:[^/]+/)*?(\d+).html".format('|'.join(tla)), links[i])[-1]
-        with open(join(args.odir, "files", "{}-{}".format(tla_link[0], tla_link[1])), "w") as f:
-            f.write(z[1].encode('utf-8'))
-
 red = redis.StrictRedis(host=args.redis_host, port=6379, db=0)
 prices = list(craigcr.numbers(['price']))
+descs = list(craigcr.field('desc'))
 for i in sorted(filtered):
     if prices[i]['price'] is not None:
         red.hset('item.' + ids[i], 'price', prices[i]['price'])
         red.zadd('item.index.price', prices[i]['price'], ids[i])
-    red.hmset('item.' + ids[i], {'link': links[i], 'title': titles[i], 'bedrooms': bedrooms[i], 'coords': coords[i], 'posted': posted[i].isoformat()})
+    red.zadd('item.index.posted.{}'.format(args.payfor), int(posted[i].strftime("%s")), ids[i])
+    red.hmset('item.' + ids[i], {'link': links[i], 'title': titles[i], 'desc': descs[i], 'bedrooms': bedrooms[i], 'coords': coords[i], 'posted': posted[i].isoformat()})
     red.zadd('item.index.bedrooms', bedrooms[i], ids[i])
     if None not in coords[i]:
         red.geoadd('item.geohash.coords', *(tuple(reversed(coords[i])) + (ids[i],)))

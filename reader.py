@@ -109,7 +109,11 @@ def read_attrs(re_which, stream):
     if not line:
         return None
     jso = json.loads(line)
-    a = [a for a in jso['attrs'] if re.match(re_which, a)]
+    a = []
+    try:
+        a = [a for a in jso['attrs'] if re.match(re_which, a)]
+    except KeyError:
+        pass
     return a[0] if a else None
 
 
