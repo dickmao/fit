@@ -8,7 +8,11 @@ class CallableAnnotate(Callable):
         self._client = client
 
     def __call__(self, doc):
-        ann = self._client.annotate(doc, annotators="ner".split())
+        try:
+            ann = self._client.annotate(doc, annotators="ner".split())
+        except TimeoutException as e:
+            print("CoreNLP timed out on: ", e.message)
+            return []
         return itertools.chain.from_iterable([[t.lemma for t in s.token if t.pos != "CD"] for s in ann.sentence])
 
 def get_text_length(docs):
