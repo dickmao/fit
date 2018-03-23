@@ -1,7 +1,7 @@
 from collections import Callable
 import itertools
 import numpy as np
-
+from corenlp import TimeoutException
 
 class CallableAnnotate(Callable):
     def __init__(self, client):
