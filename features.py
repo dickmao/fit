@@ -11,7 +11,7 @@ class CallableAnnotate(Callable):
         try:
             ann = self._client.annotate(doc, annotators="ner".split())
         except TimeoutException as e:
-            print "TimeoutException: ", doc
+            print "TimeoutException: ", doc.encode('utf-8')
             return []
         return itertools.chain.from_iterable([[t.lemma for t in s.token if t.pos != "CD"] for s in ann.sentence])
 
