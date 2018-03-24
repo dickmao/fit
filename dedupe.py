@@ -51,7 +51,9 @@ def revisionist(cr, ids):
     print("n*(n-1)/2 took %0.3fs" % (time() - t0))
     return latest
 
-def CorpusDedupe(cr, ids):
+def CorpusDedupe(odir, jsons, exclude):
+    cr = Json100CorpusReader(odir, jsons, dedupe="id", exclude=exclude)
+    ids = list(cr.field('id'))
     # dict.doc2bow makes:
     #   corpus = [[(0, 1.0), (1, 1.0), (2, 1.0)],
     #             [(2, 1.0), (3, 1.0), (4, 1.0), (5, 1.0), (6, 1.0), (8, 1.0)],
@@ -181,13 +183,20 @@ spider = os.path.basename(os.path.realpath(args.odir))
 srcdir = os.path.dirname(os.path.realpath(__file__))
 bucket = "303634175659.{}".format(spider)
 s3_client = botocore.session.get_session().create_client('s3')
+
 jsons, latest = download_s3(s3_client, bucket, args.odir, args.payfor)
 exclude = set()
-if args.revisionist:
+if args.revisionist: # for noncraig sources
     allcr = Json100CorpusReader(args.odir, jsons, dedupe="id")
     ids = list(allcr.field('id'))
     exclude = set(ids) - revisionist(allcr, ids)
-craigcr = Json100CorpusReader(args.odir, jsons, dedupe="id", exclude=exclude)
+unduped, duped = CorpusDedupe(args.odir, jsons, exclude)
+try:
+    last_json_read = joblib.load(join(args.odir, 'last-json-read.pkl'), mmap_mode='r')
+except IOError:
+    last_json_read = ""
+craigcr = Json100CorpusReader(args.odir, [fn for fn in jsons if fn > last_json_read],
+                              dedupe="id", exclude=exclude)
 coords = list(craigcr.coords())
 links = list(craigcr.field('link'))
 titles = list(craigcr.field('title'))
@@ -195,7 +204,6 @@ ids = list(craigcr.field('id'))
 posted = [dateutil.parser.parse(t) for t in craigcr.field('posted')]
 bedrooms = []
 
-unduped, duped = CorpusDedupe(craigcr, ids)
 for i, z in enumerate(zip(craigcr.attrs_matching(r'[0-9][bB][rR]'), titles, craigcr.raw())):
     if z[0] is not None:
         bedrooms.append(int(re.findall(r"[0-9]", z[0])[0]))
@@ -239,9 +247,6 @@ for pair in Counter(listedby).iteritems():
         if not re.search(re_suspect, pair[0], re.IGNORECASE):
             oklistedby.add(pair[0])
 
-odoms = craigcr.attrs_matching(r'[oO]dom')
-odoms = [re.split(r':\s*', i, 1).pop() if i else None for i in odoms]
-
 with CoreNLPClient(start_cmd="gradle -p {} server".format("../CoreNLP"), endpoint=args.corenlp_uri, timeout=15000) as client:
     response = s3_client.get_object(Bucket=bucket, Key="{}.pkl".format(vernum))
     with open(join(args.odir, 'svc.pkl'), 'w') as fp:
@@ -277,9 +282,6 @@ with open(join(args.odir, 'digest'), 'w+') as good, open(join(args.odir, 'reject
             continue
         if listedby[i] is not None and listedby[i] not in oklistedby:
             bad.write(("listedby %s" % listing).encode('utf-8') + '\n\n')
-            continue
-        if odoms[i] and int(odoms[i]) > 160000:
-            bad.write(("miles %s" % listing).encode('utf-8') + '\n\n')
             continue
         if not within(coords[i]):
             bad.write(("toofar %s" % listing).encode('utf-8') + '\n\n')
@@ -323,4 +325,4 @@ for i in sorted(filtered):
         red.geoadd('item.geohash.coords', *(tuple(reversed(coords[i])) + (ids[i],)))
     red.hset('item.' + ids[i], 'score', scores[i])
     red.zadd('item.index.score', scores[i], ids[i])
-
+joblib.dump(max(jsons), join(args.odir, 'last-json-read.pkl'))
