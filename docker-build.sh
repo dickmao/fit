@@ -22,7 +22,7 @@ FROM python:2.7
 MAINTAINER dick <noreply@shunyet.com>
 RUN set -xe \
   && apt-get -yq update \
-  && DEBIAN_FRONTEND=noninteractive apt-get -yq install libenchant1c2a \
+  && DEBIAN_FRONTEND=noninteractive apt-get -yq install libenchant1c2a vim \
   && apt-get clean \
   && curl -sSL https://raw.githubusercontent.com/vishnubob/wait-for-it/master/wait-for-it.sh -o ./wait-for-it.sh \
   && chmod u+x ./wait-for-it.sh \
