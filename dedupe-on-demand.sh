@@ -25,7 +25,7 @@ while [ 1 ] ; do
                options=""
                if [ $spider == "listingsproject" ]; then
                    options="${options} --revisionist --payfor 28"
-               elif [ "${CIRCLE_BRANCH:-}" == "dev" ]; then
+               elif [ "${GIT_BRANCH:-}" == "dev" ]; then
                    options="${options} --payfor 2"
                fi
                python ${WDIR}/dedupe.py --redis-host redis --corenlp-uri http://corenlp:9005 ${ITEMDIR}/${spider}$options
