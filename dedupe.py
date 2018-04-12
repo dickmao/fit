@@ -393,8 +393,8 @@ for i in sorted(filtered):
     if span2[1] and span[1] and span2[1] > span[1]:
         span[1] = span2[1]
     if span[0]:
-        red.hmset('item.' + ids[i], 'begin', int(span[0].strftime("%s")))
+        red.hset('item.' + ids[i], 'begin', int(span[0].strftime("%s")))
     if span[1]:
-        red.hmset('item.' + ids[i], 'end', int(span[1].strftime("%s")))
+        red.hset('item.' + ids[i], 'end', int(span[1].strftime("%s")))
    
 joblib.dump(max(jsons), join(args.odir, 'last-json-read.pkl'))
