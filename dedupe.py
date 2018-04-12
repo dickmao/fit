@@ -377,6 +377,8 @@ red = redis.StrictRedis(host=args.redis_host, port=6379, db=0)
 prices = list(craigcr.numbers(['price']))
 descs = list(craigcr.field('desc'))
 available = [(dtOfString(re.search(r'\S+ \d+', z).group(), "%b %d", posted[i]) if z else None) for i,z in enumerate(craigcr.attrs_matching(r'^[aA]vail'))]
+begins = [(dateutil.parser.parse(t) if t else None) for t in craigcr.field('begin')]
+ends = [(dateutil.parser.parse(t) if t else None) for t in craigcr.field('end')]
 for i in sorted(filtered):
     if prices[i]['price'] is not None:
         red.hset('item.' + ids[i], 'price', prices[i]['price'])
@@ -388,13 +390,17 @@ for i in sorted(filtered):
         red.geoadd('item.geohash.coords', *(tuple(reversed(coords[i])) + (ids[i],)))
     red.hset('item.' + ids[i], 'score', scores[i])
     red.zadd('item.index.score', scores[i], ids[i])
-    span = begin_end(client, available[i], posted[i], descs[i])
-    span2 = begin_end(client, available[i], posted[i], titles[i])
-    if span2[1] and span[1] and span2[1] > span[1]:
-        span[1] = span2[1]
-    if span[0]:
-        red.hset('item.' + ids[i], 'begin', int(span[0].strftime("%s")))
-    if span[1]:
-        red.hset('item.' + ids[i], 'end', int(span[1].strftime("%s")))
+    if begins[i] and ends[i]:
+        red.hset('item.' + ids[i], 'begin', begins[i].isoformat())
+        red.hset('item.' + ids[i], 'end', ends[i].isoformat())
+    else:
+        span = begin_end(client, available[i], posted[i], descs[i])
+        span2 = begin_end(client, available[i], posted[i], titles[i])
+        if span2[1] and span[1] and span2[1] > span[1]:
+            span[1] = span2[1]
+        if span[0]:
+            red.hset('item.' + ids[i], 'begin', span[0].isoformat())
+        if span[1]:
+            red.hset('item.' + ids[i], 'end', span[1].isoformat())
    
 joblib.dump(max(jsons), join(args.odir, 'last-json-read.pkl'))
