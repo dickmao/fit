@@ -3,7 +3,8 @@
 from __future__ import division
 import os, re, redis
 import numpy as np
-from corenlp import CoreNLPClient
+from corenlp import CoreNLPClient, TimeoutException
+import itertools
 import enchant
 from gensim import corpora, models
 from gensim.similarities.docsim import SparseMatrixSimilarity
@@ -17,12 +18,46 @@ from math import radians, sin, cos, sqrt, asin
 
 from os.path import join
 import dateutil.parser
+from datetime import datetime, timedelta
 from time import time
 import argparse
 
 from sklearn.externals import joblib
 
 vernum = 'ad0001'
+
+def fill_year(b, posted):
+    cands = [b.replace(year=posted.year-1), b.replace(year=posted.year), b.replace(year=posted.year+1)]
+    return min(cands, key=lambda x:abs(x - posted))
+
+def days_of(timex):
+    mo = re.search(r'(\d+)([DWMY])', timex)
+    if mo:
+        num = int(mo.group(1))
+        unit = mo.group(2)
+        if unit == "D":
+            return num
+        elif unit == "W":
+            return num * 7
+        elif unit == "M":
+            return num * 30
+        elif unit == "Y":
+            return num * 365
+    return 0
+
+def dtOfString(md, fmt, posted):
+    try:
+        b = datetime.strptime(md, fmt)
+    except ValueError as e:
+        if str(e).startswith("time"):
+            md = md.replace("X", str(1))
+            b = datetime.strptime(md, fmt)
+        else:
+            raise e
+    b = b.replace(tzinfo=posted.tzinfo)
+    if abs(b - posted).days > 360:
+        b = fill_year(b, posted)
+    return b
 
 def argparse_dirtype(astring):
     if not os.path.isdir(astring):
@@ -169,6 +204,33 @@ def numGraphs(vOfv):
 def numNonAscii(vOfv):
     return sum([1 for v in vOfv for w in v if any(ord(char) > 127 and ord(char) != 8226 for char in w)])
 
+# span = begin_end(client, available[i], posted[i], descs[i])
+def begin_end(client, available, posted, doc):
+    try:
+        ann = client.annotate(doc, annotators="ner".split())
+    except TimeoutException:
+        print "TimeoutException: ", doc.encode('utf-8')
+        return None, None
+    left, right = available, None
+    durs = [m.timex.value for m in itertools.chain(*[mgroup for mgroup in [s.mentions for s in ann.sentence] ]) if m.ner == "DURATION" and re.match(r'P\d+[DWMY]', m.timex.value)]
+    if durs:
+        right = left + timedelta(days=max([days_of(x) for x in durs]))
+    dates = [m.timex.value for m in itertools.chain(*[mgroup for mgroup in [s.mentions for s in ann.sentence] ]) if m.ner == 'DATE' and m.timex.value and re.match(r'[X0-9]{4}-[X0-9]{2}-', m.timex.value) ]
+    if dates:
+        dates = [dtOfString(d, "%Y-%m-%d", posted) for d in dates]
+        if not available:
+            left = dates[0]
+        for i, d in enumerate(dates):
+            if abs((d - left).days) < 6 and i+1 < len(dates):
+                print d
+                right = dates[i+1]
+                break
+        if not right:
+            rights = [d for d in dates if d >= left]
+            if rights:
+                right = rights[0]
+    return left, right
+
 parser = argparse.ArgumentParser()
 parser.add_argument('--redis-host', type=str, default='localhost')
 parser.add_argument('--corenlp-uri', type=str, default='http://localhost:9005')
@@ -314,6 +376,7 @@ with open(join(args.odir, 'digest'), 'w+') as good, open(join(args.odir, 'reject
 red = redis.StrictRedis(host=args.redis_host, port=6379, db=0)
 prices = list(craigcr.numbers(['price']))
 descs = list(craigcr.field('desc'))
+available = [(dtOfString(re.search(r'\S+ \d+', z).group(), "%b %d", posted[i]) if z else None) for i,z in enumerate(craigcr.attrs_matching(r'^[aA]vail'))]
 for i in sorted(filtered):
     if prices[i]['price'] is not None:
         red.hset('item.' + ids[i], 'price', prices[i]['price'])
@@ -325,4 +388,13 @@ for i in sorted(filtered):
         red.geoadd('item.geohash.coords', *(tuple(reversed(coords[i])) + (ids[i],)))
     red.hset('item.' + ids[i], 'score', scores[i])
     red.zadd('item.index.score', scores[i], ids[i])
+    span = begin_end(client, available[i], posted[i], descs[i])
+    span2 = begin_end(client, available[i], posted[i], titles[i])
+    if span2[1] and span[1] and span2[1] > span[1]:
+        span[1] = span2[1]
+    if span[0]:
+        red.hmset('item.' + ids[i], 'begin', int(span[0].strftime("%s")))
+    if span[1]:
+        red.hmset('item.' + ids[i], 'end', int(span[1].strftime("%s")))
+   
 joblib.dump(max(jsons), join(args.odir, 'last-json-read.pkl'))
