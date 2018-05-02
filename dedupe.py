@@ -213,7 +213,7 @@ def begin_end(client, available, posted, doc):
         return None, None
     left, right = available, None
     durs = [m.timex.value for m in itertools.chain(*[mgroup for mgroup in [s.mentions for s in ann.sentence] ]) if m.ner == "DURATION" and re.match(r'P\d+[DWMY]', m.timex.value)]
-    if durs:
+    if left and durs:
         right = left + timedelta(days=max([days_of(x) for x in durs]))
     dates = [m.timex.value for m in itertools.chain(*[mgroup for mgroup in [s.mentions for s in ann.sentence] ]) if m.ner == 'DATE' and m.timex.value and re.match(r'[X0-9]{4}-[X0-9]{2}-', m.timex.value) ]
     if dates:
