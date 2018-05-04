@@ -1,7 +1,7 @@
 #!/usr/bin/python
 
 from __future__ import division
-import os, re, redis
+import os, re, redis, sys
 import numpy as np
 from corenlp import CoreNLPClient, TimeoutException
 import itertools
@@ -51,8 +51,13 @@ def dtOfString(md, fmt, posted):
     except ValueError as e:
         if str(e).startswith("time"):
             md = md.replace("X", str(1))
-            b = datetime.strptime(md, fmt)
+            try:
+                b = datetime.strptime(md, fmt)
+            except ValueError as e:
+                print md, fmt, posted
+                raise e
         else:
+            print md, fmt, posted
             raise e
     b = b.replace(tzinfo=posted.tzinfo)
     if abs(b - posted).days > 360:
@@ -67,7 +72,7 @@ def argparse_dirtype(astring):
 def revisionist(cr, ids):
     dictionary = corpora.Dictionary()
     corpus = [dictionary.doc2bow(doc, allow_update=True) for doc in list(cr)]
-    tfidf = models.TfidfModel(corpus)   
+    tfidf = models.TfidfModel(corpus)
     tempf  = mkstemp()[1]
     corpora.MmCorpus.serialize(tempf, tfidf[corpus], id2word=dictionary.id2token)
     mmcorpus = corpora.MmCorpus(tempf)
@@ -102,7 +107,7 @@ def CorpusDedupe(odir, jsons, exclude):
 
     dictionary = corpora.Dictionary()
     corpus = [dictionary.doc2bow(doc, allow_update=True) for doc in list(cr)]
-    tfidf = models.TfidfModel(corpus)   
+    tfidf = models.TfidfModel(corpus)
     tempf  = mkstemp()[1]
     corpora.MmCorpus.serialize(tempf, tfidf[corpus], id2word=dictionary.id2token)
     mmcorpus = corpora.MmCorpus(tempf)
@@ -185,7 +190,7 @@ def nPara(raw):
         elif inPara:
             inPara = False
     return result
-    
+
 def numSents(vOfv):
     return len(vOfv)
 
@@ -200,7 +205,7 @@ def numWords(vOfv):
 
 def numGraphs(vOfv):
     return sum([1 for v in vOfv for w in v if re.match(r'([^0-9a-zA-Z])\1\1\1', w)])
-    
+
 def numNonAscii(vOfv):
     return sum([1 for v in vOfv for w in v if any(ord(char) > 127 and ord(char) != 8226 for char in w)])
 
@@ -215,14 +220,13 @@ def begin_end(client, available, posted, doc):
     durs = [m.timex.value for m in itertools.chain(*[mgroup for mgroup in [s.mentions for s in ann.sentence] ]) if m.ner == "DURATION" and re.match(r'P\d+[DWMY]', m.timex.value)]
     if left and durs:
         right = left + timedelta(days=max([days_of(x) for x in durs]))
-    dates = [m.timex.value for m in itertools.chain(*[mgroup for mgroup in [s.mentions for s in ann.sentence] ]) if m.ner == 'DATE' and m.timex.value and re.match(r'[X0-9]{4}-[X0-9]{2}-', m.timex.value) ]
+    dates = [m.timex.value.split('T')[0] for m in itertools.chain(*[mgroup for mgroup in [s.mentions for s in ann.sentence] ]) if m.ner == 'DATE' and m.timex.value and re.match(r'[X0-9]{4}-[X0-9]{2}-', m.timex.value) ]
     if dates:
         dates = [dtOfString(d, "%Y-%m-%d", posted) for d in dates]
         if not available:
             left = dates[0]
         for i, d in enumerate(dates):
             if abs((d - left).days) < 6 and i+1 < len(dates):
-                print d
                 right = dates[i+1]
                 break
         if not right:
@@ -257,8 +261,12 @@ try:
     last_json_read = joblib.load(join(args.odir, 'last-json-read.pkl'), mmap_mode='r')
 except IOError:
     last_json_read = ""
-craigcr = Json100CorpusReader(args.odir, [fn for fn in jsons if fn > last_json_read],
-                              dedupe="id", exclude=exclude)
+fns = [fn for fn in jsons if fn > last_json_read]
+if not len(fns):
+    print "No Data files beyond %s".format(last_json_read)
+    sys.exit(0)
+
+craigcr = Json100CorpusReader(args.odir, fns, dedupe="id", exclude=exclude)
 coords = list(craigcr.coords())
 links = list(craigcr.field('link'))
 titles = list(craigcr.field('title'))
@@ -318,7 +326,7 @@ with CoreNLPClient(start_cmd="gradle -p {} server".format("../CoreNLP"), endpoin
     # for tup in svc.named_steps['featureunion'].transformer_list:
     #     pipeline = tup[1]
     #     for obj in pipeline.named_steps.values():
-    #         if type(obj) == 
+    #         if type(obj) ==
     pipeline = next(x[1] for x in svc.named_steps['featureunion'].transformer_list \
                     if x[0] == 'text')
     pipeline.named_steps['vectorizer'].analyzer._client = client
@@ -396,11 +404,12 @@ for i in sorted(filtered):
     else:
         span = begin_end(client, available[i], posted[i], descs[i])
         span2 = begin_end(client, available[i], posted[i], titles[i])
-        if span2[1] and span[1] and span2[1] > span[1]:
-            span[1] = span2[1]
         if span[0]:
             red.hset('item.' + ids[i], 'begin', span[0].isoformat())
         if span[1]:
-            red.hset('item.' + ids[i], 'end', span[1].isoformat())
-   
+            if span2[1] and span2[1] > span[1]:
+                red.hset('item.' + ids[i], 'end', span2[1].isoformat())
+            else:
+                red.hset('item.' + ids[i], 'end', span[1].isoformat())
+
 joblib.dump(max(jsons), join(args.odir, 'last-json-read.pkl'))
