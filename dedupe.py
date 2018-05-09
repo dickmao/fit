@@ -237,6 +237,7 @@ def begin_end(client, available, posted, doc):
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--redis-host', type=str, default='localhost')
+parser.add_argument('--redis-database', type=int, default=0)
 parser.add_argument('--corenlp-uri', type=str, default='http://localhost:9005')
 parser.add_argument('--payfor', type=int, default=9)
 parser.add_argument('--revisionist', dest='revisionist', action='store_true')
@@ -381,7 +382,7 @@ with open(join(args.odir, 'digest'), 'w+') as good, open(join(args.odir, 'reject
         good.write(listing.encode('utf-8') + '\n\n')
         filtered.append(i)
 
-red = redis.StrictRedis(host=args.redis_host, port=6379, db=0)
+red = redis.StrictRedis(host=args.redis_host, port=6379, db=args.redis_database)
 prices = list(craigcr.numbers(['price']))
 descs = list(craigcr.field('desc'))
 available = [(dtOfString(re.search(r'\S+ \d+', z).group(), "%b %d", posted[i]) if z else None) for i,z in enumerate(craigcr.attrs_matching(r'^[aA]vail'))]
