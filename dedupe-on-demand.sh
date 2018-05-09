@@ -22,8 +22,8 @@ while [ 1 ] ; do
     for spider in "${spiders[@]}" ; do
         if [ -d ${ITEMDIR}/$spider ]; then
            if ( [ ! -e ${ITEMDIR}/${spider}/digest ] && [ ! -z "$(find -L ${ITEMDIR}/$spider -name 'Marker.*\.json')" ] ) || ( [ -e ${ITEMDIR}/${spider}/digest ] && [[ ! -z $(find -L ${ITEMDIR}/${spider} -name 'Marker.*\.json' -cnewer ${ITEMDIR}/${spider}/digest) ]] ); then
-               local options=""
-               local database=0
+               options=""
+               database=0
                if [ $spider == "listingsproject" ]; then
                    options="${options} --revisionist --payfor 28"
                elif [ "${GIT_BRANCH:-}" == "dev" ]; then
