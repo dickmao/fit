@@ -5,7 +5,7 @@ PROJECT=tutorial
 ITEMDIR=/var/lib/scrapyd/items/${PROJECT}
 ONCE=${1:-}
 declare -A once
-declare -a spiders=("newyork" "listingsproject", "sfbay")
+declare -a spiders=("newyork" "listingsproject" "sfbay")
 
 function once_yet {
     for spider in "${spiders[@]}" ; do
