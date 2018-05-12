@@ -1,12 +1,31 @@
 #!/bin/bash -ex
 
+declare -a spiders
+while [[ $# -gt 0 ]] ; do
+  key="$1"
+  case "$key" in
+      -o)
+      ONCE=1
+      shift
+      ;;
+      -s)
+      spiders+=("$2")
+      shift
+      shift
+      ;;
+      *)
+      break
+      ;;    
+  esac
+done
+if [[ "${spiders[@]}" == "" ]]; then
+    spiders=("newyork" "listingsproject" "sfbay")
+fi
 WDIR=$(dirname $0)
 PROJECT=tutorial
 ITEMDIR=/var/lib/scrapyd/items/${PROJECT}
-ONCE=${1:-}
-declare -A once
-declare -a spiders=("newyork" "listingsproject" "sfbay")
 
+declare -A once
 function once_yet {
     for spider in "${spiders[@]}" ; do
         if ! test "${once[$spider]+isset}"; then
@@ -34,12 +53,12 @@ while [ 1 ] ; do
                        database=1
                        ;;
                esac
-               python ${WDIR}/dedupe.py --redis-host redis --corenlp-uri http://corenlp:9005 --redis-database=${database} ${ITEMDIR}/${spider}$options
+               python ${WDIR}/dedupe.py --redis-host redis --corenlp-uri http://corenlp:9005 --redis-database ${database} ${ITEMDIR}/${spider}$options
                once+=([$spider]=1)
            fi
         fi
     done
-    if [ ! -z $ONCE ] && once_yet ; then
+    if [ ! -z "${ONCE:-}" ] && once_yet ; then
       break
     fi
     sleep 30
