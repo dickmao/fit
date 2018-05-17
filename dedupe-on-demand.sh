@@ -49,7 +49,12 @@ while [ 1 ] ; do
                    options="${options} --payfor 2"
                fi
                case "$spider" in
+                   newyork)
+                       options="${options} --vernum ad0001"
+                       database=0
+                       ;;
                    sfbay)
+                       options="${options} --vernum aa0002"
                        database=1
                        ;;
                esac

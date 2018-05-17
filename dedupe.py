@@ -24,8 +24,6 @@ import argparse
 
 from sklearn.externals import joblib
 
-vernum = 'ad0001'
-
 def fill_year(b, posted):
     cands = [b.replace(year=posted.year-1), b.replace(year=posted.year), b.replace(year=posted.year+1)]
     return min(cands, key=lambda x:abs(x - posted))
@@ -241,6 +239,7 @@ parser.add_argument('--redis-database', type=int, default=0)
 parser.add_argument('--corenlp-uri', type=str, default='http://localhost:9005')
 parser.add_argument('--payfor', type=int, default=9)
 parser.add_argument('--revisionist', dest='revisionist', action='store_true')
+parser.add_argument('--vernum', type=str, default='ad0001')
 parser.set_defaults(revisionist=False)
 parser.add_argument("odir", type=argparse_dirtype, help="required json directory")
 
@@ -319,7 +318,7 @@ for pair in Counter(listedby).iteritems():
             oklistedby.add(pair[0])
 
 with CoreNLPClient(start_cmd="gradle -p {} server".format("../CoreNLP"), endpoint=args.corenlp_uri, timeout=15000) as client:
-    response = s3_client.get_object(Bucket=bucket, Key="{}.pkl".format(vernum))
+    response = s3_client.get_object(Bucket=bucket, Key="{}.pkl".format(args.vernum))
     with open(join(args.odir, 'svc.pkl'), 'w') as fp:
         fp.write(response['Body'].read())
     svc = joblib.load(join(args.odir, 'svc.pkl'), mmap_mode='r')
