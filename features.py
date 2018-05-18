@@ -8,6 +8,7 @@ class CallableAnnotate(Callable):
         self._client = client
 
     def __call__(self, doc):
+        return []
         try:
             ann = self._client.annotate(doc, annotators="ner".split())
         except TimeoutException as e:
