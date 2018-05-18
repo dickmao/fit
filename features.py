@@ -6,15 +6,18 @@ from corenlp import TimeoutException
 class CallableAnnotate(Callable):
     def __init__(self, client):
         self._client = client
+        self._foo = []
 
     def __call__(self, doc):
-        return []
+        if self._foo:
+            return self._foo
         try:
             ann = self._client.annotate(doc, annotators="ner".split())
         except TimeoutException as e:
             print "TimeoutException: ", doc.encode('utf-8')
             return []
-        return itertools.chain.from_iterable([[t.lemma for t in s.token if t.pos != "CD"] for s in ann.sentence])
+        self._foo = itertools.chain.from_iterable([[t.lemma for t in s.token if t.pos != "CD"] for s in ann.sentence])
+        return self._foo
 
 def get_text_length(docs):
     return np.array([len(doc) for doc in docs]).reshape(-1, 1)
@@ -33,4 +36,3 @@ class CallableCountPronouns(Callable):
                 print "TimeoutException: ", doc.encode('utf-8')
                 result.append(0)
         return np.asarray(result).reshape(-1, 1)
-
