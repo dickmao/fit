@@ -13,7 +13,6 @@ class CallableAnnotate(Callable):
         except TimeoutException as e:
             print "TimeoutException: ", doc.encode('utf-8')
             return []
-        print doc[0:10]
         return itertools.chain.from_iterable([[t.lemma for t in s.token if t.pos != "CD"] for s in ann.sentence])
 
 def get_text_length(docs):
