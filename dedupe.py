@@ -71,7 +71,7 @@ def revisionist(cr, ids):
     dictionary = corpora.Dictionary()
     corpus = [dictionary.doc2bow(doc, allow_update=True) for doc in list(cr)]
     tfidf = models.TfidfModel(corpus)
-    tempf  = mkstemp()[1]
+    tempf  = mkstemp(dir=args.odir)[1]
     corpora.MmCorpus.serialize(tempf, tfidf[corpus], id2word=dictionary.id2token)
     mmcorpus = corpora.MmCorpus(tempf)
     # SparseMatrixSimilarity[query]
@@ -106,7 +106,7 @@ def CorpusDedupe(odir, jsons, exclude):
     dictionary = corpora.Dictionary()
     corpus = [dictionary.doc2bow(doc, allow_update=True) for doc in list(cr)]
     tfidf = models.TfidfModel(corpus)
-    tempf  = mkstemp()[1]
+    tempf  = mkstemp(dir=args.odir)[1]
     corpora.MmCorpus.serialize(tempf, tfidf[corpus], id2word=dictionary.id2token)
     mmcorpus = corpora.MmCorpus(tempf)
     unduped = unduped.intersection(ids)
