@@ -263,7 +263,7 @@ except IOError:
     last_json_read = ""
 fns = [fn for fn in jsons if fn > last_json_read]
 if not len(fns):
-    print "No Data files beyond %s".format(last_json_read)
+    print "No Data files beyond {}".format(last_json_read)
     sys.exit(0)
 
 craigcr = Json100CorpusReader(args.odir, fns, dedupe="id", exclude=exclude)
