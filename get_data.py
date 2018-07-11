@@ -2,6 +2,7 @@ import os, json, dateutil.parser
 from os.path import join
 from pytz import utc
 import pickle
+from datetime import datetime, timedelta
 
 def datetime_parser(json_dict):
     for k,v in json_dict.iteritems():
@@ -16,7 +17,8 @@ def get_datetime(filename):
 
 def download_s3(s3_client, bucket, dir=".", payfor=9):
     jsons = []
-    response = s3_client.list_objects_v2(Bucket=bucket, Prefix="Marker.")
+    start_after = 'Marker.{}.json'.format((datetime.now() - timedelta(days=payfor)).replace(microsecond=0).isoformat().replace(":", "-"))
+    response = s3_client.list_objects_v2(Bucket=bucket, Prefix="Marker.", StartAfter=start_after)
     Markers = sorted([content['Key'] for content in response['Contents']], reverse=True)
     latest = get_datetime(Markers[0])
     for m in Markers:
@@ -50,4 +52,3 @@ def download_s3(s3_client, bucket, dir=".", payfor=9):
         else:
             break
     return jsons, latest
-
