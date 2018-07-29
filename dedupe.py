@@ -120,16 +120,19 @@ def CorpusDedupe(odir, jsons, exclude):
     # ConcatenatedCorpusView cannot seem to random access; must iterate sequentially lest
     # block reader get ahead of itself
     assert(len(mmcorpus) == len(ids))
+    discover_duped = []
     for i,z in enumerate(zip(new_ids, new_indices)):
         # where-clause literals are n-wide boolean arrays
         for dj in np.where((new_sim[i] > 0.61) & [j!=z[1] for j in range(len(ids))])[0]:
             duped.update([z[0], ids[dj]])
+            # an element previously thought to have been unduped
+            discover_duped.append(ids[dj])
     print("(n-1) + ... (n-k) = k(n - (k+1)/2) took %0.3fs" % (time() - t0))
 
     unduped.update(new_ids - duped)
     joblib.dump(unduped, join(args.odir, 'unduped.pkl'))
     joblib.dump(duped, join(args.odir, 'duped.pkl'))
-    return unduped, duped
+    return unduped, duped, discover_duped
 
 def haversine(lat1, lon1, lat2, lon2):
     R = 6372.8  # Earth radius in kilometers
@@ -256,7 +259,7 @@ if args.revisionist: # for noncraig sources
     allcr = Json100CorpusReader(args.odir, jsons, dedupe="id")
     ids = list(allcr.field('id'))
     exclude = set(ids) - revisionist(allcr, ids)
-unduped, duped = CorpusDedupe(args.odir, jsons, exclude)
+unduped, duped, discover_duped = CorpusDedupe(args.odir, jsons, exclude)
 try:
     last_json_read = joblib.load(join(args.odir, 'last-json-read.pkl'), mmap_mode='r')
 except IOError:
@@ -411,5 +414,12 @@ for i in sorted(filtered):
                 red.hset('item.' + ids[i], 'end', span2[1].isoformat())
             else:
                 red.hset('item.' + ids[i], 'end', span[1].isoformat())
+
+red.delete(*["item.{}".format(i) for i in discover_duped])
+red.zrem('item.index.price', *discover_duped)
+red.zrem('item.index.bedrooms', *discover_duped)
+red.zrem('item.index.score', *discover_duped)
+red.zrem('item.geohash.coords', *discover_duped)
+red.zrem('item.index.posted.{}'.format(args.payfor), *discover_duped)
 
 joblib.dump(max(jsons), join(args.odir, 'last-json-read.pkl'))
