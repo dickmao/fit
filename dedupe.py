@@ -416,7 +416,7 @@ for i in sorted(filtered):
                 red.hset('item.' + ids[i], 'end', span[1].isoformat())
 
 if discover_duped:
-    print("Deleting discovered dupes: {}".format(str(discover_duped))
+    print("Deleting discovered dupes: {}".format(str(discover_duped)))
 red.delete(*["item.{}".format(i) for i in discover_duped])
 red.zrem('item.index.price', *discover_duped)
 red.zrem('item.index.bedrooms', *discover_duped)
