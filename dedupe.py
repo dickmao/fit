@@ -89,8 +89,8 @@ def revisionist(cr, ids):
     print("n*(n-1)/2 took %0.3fs" % (time() - t0))
     return latest
 
-def CorpusDedupe(odir, jsons, exclude):
-    cr = Json100CorpusReader(odir, jsons, dedupe="id", exclude=exclude)
+def CorpusDedupe(jsons, exclude):
+    cr = Json100CorpusReader(args.odir, jsons, dedupe="id", exclude=exclude)
     ids = list(cr.field('id'))
     # dict.doc2bow makes:
     #   corpus = [[(0, 1.0), (1, 1.0), (2, 1.0)],
@@ -259,7 +259,7 @@ if args.revisionist: # for noncraig sources
     allcr = Json100CorpusReader(args.odir, jsons, dedupe="id")
     ids = list(allcr.field('id'))
     exclude = set(ids) - revisionist(allcr, ids)
-unduped, duped, discover_duped = CorpusDedupe(args.odir, jsons, exclude)
+unduped, duped, discover_duped = CorpusDedupe(jsons, exclude)
 try:
     last_json_read = joblib.load(join(args.odir, 'last-json-read.pkl'), mmap_mode='r')
 except IOError:

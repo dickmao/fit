@@ -19,7 +19,15 @@ def download_s3(s3_client, bucket, dir=".", payfor=9):
     jsons = []
     start_after = 'Marker.{}.json'.format((datetime.now() - timedelta(days=payfor)).replace(microsecond=0).isoformat().replace(":", "-"))
     response = s3_client.list_objects_v2(Bucket=bucket, Prefix="Marker.", StartAfter=start_after)
-    Markers = sorted([content['Key'] for content in response['Contents']], reverse=True)
+
+    Markers = []
+    for content in response['Contents']:
+        if 'Key' in content:
+            Markers.append(content['Key'])
+        else:
+            print("download_s3: bucket={}, dir={}, start_after={}, ignoring content={}".format(bucket, dir, start_after, str(content)))
+    Markers = sorted(Markers, reverse=True)
+
     latest = get_datetime(Markers[0])
     for m in Markers:
         if not os.path.exists(m):
